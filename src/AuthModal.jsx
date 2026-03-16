@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { toast } from 'react-hot-toast';
 
 export const AuthModal = ({ isOpen, onClose }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -22,10 +23,12 @@ export const AuthModal = ({ isOpen, onClose }) => {
     try {
       if (isLogin) {
         await signIn(email, password);
+        onClose();
       } else {
         await signUp(email, password, name);
+        toast.success('Success! Please check your email to verify your account.', { duration: 6000 });
+        onClose();
       }
-      onClose();
     } catch (err) {
       setError(err.message);
     } finally {

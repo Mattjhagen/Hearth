@@ -14,6 +14,7 @@ import {
 import { useAuth } from './AuthContext';
 import { AuthModal } from './AuthModal';
 import { supabase } from './supabaseClient';
+import { Toaster } from 'react-hot-toast';
 
 // ... (Navbar, HeroSection, Footer remain unchanged) ...
 const Navbar = ({ onOpenAuth }) => {
@@ -306,6 +307,7 @@ export default function App() {
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
       />
+      <Toaster position="bottom-center" />
     </div>
   );
 }
