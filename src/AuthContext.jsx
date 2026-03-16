@@ -31,7 +31,8 @@ export const AuthProvider = ({ children }) => {
       options: {
         data: {
           name: name,
-        }
+        },
+        emailRedirectTo: window.location.origin
       }
     });
     if (error) throw error;
