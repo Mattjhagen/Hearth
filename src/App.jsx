@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { AuthModal } from './AuthModal';
+import { CreateGatheringModal } from './CreateGatheringModal';
+import { PostSkillModal } from './PostSkillModal';
 import { supabase } from './supabaseClient';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 
 // ... (Navbar, HeroSection, Footer remain unchanged) ...
 const Navbar = ({ onOpenAuth }) => {
@@ -76,14 +78,14 @@ const HeroSection = ({ onOpenAuth }) => {
 };
 
 
-const GatheringsSection = ({ onOpenAuth }) => {
+const GatheringsSection = ({ onOpenAuth, onOpenCreate }) => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [user]);
 
   const fetchEvents = async () => {
     try {
@@ -91,7 +93,8 @@ const GatheringsSection = ({ onOpenAuth }) => {
         .from('gatherings')
         .select(`
           *,
-          profiles:host_id (name)
+          profiles:host_id (name),
+          gathering_attendees (user_id)
         `)
         .order('created_at', { ascending: false });
 
@@ -108,7 +111,34 @@ const GatheringsSection = ({ onOpenAuth }) => {
     if (!user) {
       onOpenAuth();
     } else {
-      alert("Opening 'Create Gathering' modal... (To be implemented)");
+      onOpenCreate();
+    }
+  };
+
+  const handleJoin = async (gatheringId, isJoining) => {
+    if (!user) {
+      onOpenAuth();
+      return;
+    }
+
+    try {
+      if (isJoining) {
+        const { error } = await supabase
+          .from('gathering_attendees')
+          .insert([{ gathering_id: gatheringId, user_id: user.id }]);
+        if (error) throw error;
+        toast.success("You're going! See you there.");
+      } else {
+        const { error } = await supabase
+          .from('gathering_attendees')
+          .delete()
+          .match({ gathering_id: gatheringId, user_id: user.id });
+        if (error) throw error;
+        toast.success("You've left this gathering.");
+      }
+      fetchEvents(); // Refresh data
+    } catch (err) {
+      toast.error(err.message);
     }
   };
 
@@ -129,13 +159,21 @@ const GatheringsSection = ({ onOpenAuth }) => {
           </div>
         ) : (
           <div className="card-grid">
-            {events.map(event => (
+            {events.map(event => {
+              const attendees = event.gathering_attendees || [];
+              const isAttending = user && attendees.some(a => a.user_id === user.id);
+              
+              return (
               <div key={event.id} className="event-card">
                 <div className="card-header">
                   <span className="card-tag">{event.category}</span>
-                  <button onClick={handleAction} className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
-                    Join
-                  </button>
+                  {user && event.host_id === user.id ? (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 600 }}>Your Event</span>
+                  ) : (
+                    <button onClick={() => handleJoin(event.id, !isAttending)} className={`btn ${isAttending ? 'btn-secondary' : 'btn-primary'}`} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+                      {isAttending ? 'Leave' : 'Join'}
+                    </button>
+                  )}
                 </div>
                 <h3 className="card-title">{event.title}</h3>
                 <div className="card-details">
@@ -152,21 +190,20 @@ const GatheringsSection = ({ onOpenAuth }) => {
                     <span>{event.profiles?.name || 'Unknown User'}</span>
                   </div>
                 </div>
-                {/* Mocking attendees UI for now since joining logic isn't built yet */}
                 <div className="card-footer">
-                  <div className="attendee-stack">
-                    <div className="attendee-avatar">+</div>
+                  <div className="attendee-stack" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users size={16} color="var(--text-secondary)" />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      {attendees.length} joining
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    0 joining
-                  </span>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
         
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
           <button onClick={handleAction} className="btn btn-secondary border">Host a Gathering</button>
         </div>
       </div>
@@ -174,15 +211,12 @@ const GatheringsSection = ({ onOpenAuth }) => {
   );
 };
 
-const SkillSwapSection = ({ onOpenAuth }) => {
+const SkillSwapSection = ({ onOpenAuth, onOpenCreate }) => {
   const { user } = useAuth();
   const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchSkills();
-  }, []);
-
+  // We are using a function reference for fetchSkills in the component, so export it or call it inside useEffect directly.
   const fetchSkills = async () => {
     try {
       const { data, error } = await supabase
@@ -202,11 +236,27 @@ const SkillSwapSection = ({ onOpenAuth }) => {
     }
   };
 
+  useEffect(() => {
+    fetchSkills();
+  }, [user]);
+
   const handleAction = () => {
     if (!user) {
       onOpenAuth();
     } else {
-      alert("Opening 'New Skill' modal... (To be implemented)");
+      onOpenCreate();
+    }
+  };
+
+  const handleConnect = (skill) => {
+    if (!user) {
+      onOpenAuth();
+    } else {
+      if (user.id === skill.user_id) {
+         toast("This is your own post.");
+      } else {
+         toast.success(`Message Request sent to ${skill.profiles?.name?.split(' ')[0] || 'User'}! (Demo)`);
+      }
     }
   };
 
@@ -248,10 +298,9 @@ const SkillSwapSection = ({ onOpenAuth }) => {
                     <Users size={16} />
                     <span>{skill.profiles?.name || 'Unknown User'}</span>
                   </div>
-                  {/* We removed hardcoded distance since location tracking isn't fully built into schema yet */}
                 </div>
                 <div style={{ marginTop: '1rem' }}>
-                  <button onClick={handleAction} className="btn btn-primary" style={{ width: '100%' }}>
+                  <button onClick={() => handleConnect(skill)} className="btn btn-primary" style={{ width: '100%' }}>
                     {skill.type === 'offer' ? 'Learn from ' : 'Help '} {skill.profiles?.name?.split(' ')[0] || 'User'}
                   </button>
                 </div>
@@ -288,6 +337,10 @@ const Footer = () => (
 
 export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isGatheringModalOpen, setIsGatheringModalOpen] = useState(false);
+  const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
+  // Using a trick to force child components to refresh data
+  const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="app-wrapper" style={{ padding: '0 1rem' }}>
@@ -295,10 +348,16 @@ export default function App() {
         <Navbar onOpenAuth={() => setIsAuthModalOpen(true)} />
       </div>
       
-      <main>
+      <main key={refreshKey}>
         <HeroSection onOpenAuth={() => setIsAuthModalOpen(true)} />
-        <GatheringsSection onOpenAuth={() => setIsAuthModalOpen(true)} />
-        <SkillSwapSection onOpenAuth={() => setIsAuthModalOpen(true)} />
+        <GatheringsSection 
+          onOpenAuth={() => setIsAuthModalOpen(true)} 
+          onOpenCreate={() => setIsGatheringModalOpen(true)} 
+        />
+        <SkillSwapSection 
+          onOpenAuth={() => setIsAuthModalOpen(true)} 
+          onOpenCreate={() => setIsSkillModalOpen(true)} 
+        />
       </main>
 
       <Footer />
@@ -307,6 +366,23 @@ export default function App() {
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
       />
+      
+      <CreateGatheringModal 
+         isOpen={isGatheringModalOpen}
+         onClose={() => setIsGatheringModalOpen(false)}
+         onCreated={() => {
+           setRefreshKey(k => k + 1); // Triggers re-render of GatheringSection
+         }}
+      />
+
+      <PostSkillModal 
+         isOpen={isSkillModalOpen}
+         onClose={() => setIsSkillModalOpen(false)}
+         onCreated={() => {
+           setRefreshKey(k => k + 1); // Triggers re-render of SkillSection
+         }}
+      />
+
       <Toaster position="bottom-center" />
     </div>
   );
